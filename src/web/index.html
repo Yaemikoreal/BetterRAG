@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterRAG · 自治知识库治理看板</title>
+    <style>
+        /* ==========================================================================
+           SWISS INTERNATIONAL TYPOGRAPHIC STYLE & CONSTRUCTIVISM DESIGN SYSTEM
+           偏浅色调瑞士主义与构成主义风格：严谨数学网格、强烈排版层级、非圆角结构、原色点缀
+           ========================================================================== */
+        :root {
+            --bg-base: #f7f6f2;          /* 温暖浅灰白底色 / Parchment Chalk */
+            --bg-surface: #ffffff;       /* 纯白功能卡片底色 */
+            --bg-subtle: #f0eee6;        /* 辅助灰底 */
+            --text-main: #0d0d0d;        /* 极深纯黑正文字体 */
+            --text-secondary: #57554f;   /* 次级灰调说明 */
+            --text-muted: #8c897e;       /* 辅助时间戳与浅标 */
+            --border-stark: #111111;     /* 构成主义重构实线边框 (1.5px/2px) */
+            --border-grid: #dedad0;      /* 瑞士网格浅构线 */
+            --accent-red: #d90429;       /* 构成主义信号红 (Conflict / Alert / Active) */
+            --accent-blue: #0047bb;      /* 国际克莱因蓝 / 蓝图色 (Search / Ingest / Links) */
+            --accent-yellow: #f59e0b;    /* 工业警示赭黄 (Probation / Warnings) */
+            --accent-green: #0f766e;     /* 权威基石绿 (Stable / Pass) */
+            --font-sans: "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            --font-mono: "SF Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 构成主义排版容器与网格 */
+        .app-layout {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 2rem 2.5rem 5rem;
+        }
+
+        /* 顶部权威标题头 */
+        header.swiss-header {
+            border-bottom: 2px solid var(--border-stark);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            position: relative;
+        }
+        .header-brand {
+            display: flex;
+            align-items: baseline;
+            gap: 1.25rem;
+        }
+        .header-brand h1 {
+            font-size: 2.75rem;
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .brand-dot {
+            width: 14px;
+            height: 14px;
+            background: var(--accent-red);
+            display: inline-block;
+        }
+        .header-subtitle {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        .status-pill {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border: 1px solid var(--border-stark);
+            background: var(--bg-surface);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+        }
+
+        /* 瑞士主义水平主导航 (Tab Navigation) */
+        nav.swiss-nav {
+            display: flex;
+            border: 1px solid var(--border-stark);
+            background: var(--bg-surface);
+            margin-bottom: 2.5rem;
+            overflow-x: auto;
+        }
+        .nav-item {
+            flex: 1;
+            min-width: 170px;
+            padding: 1rem 1.25rem;
+            border-right: 1px solid var(--border-grid);
+            background: transparent;
+            border-top: none;
+            border-bottom: none;
+            border-left: none;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .nav-item:last-child { border-right: none; }
+        .nav-item .nav-num {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+            display: block;
+            letter-spacing: 0.1em;
+        }
+        .nav-item .nav-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            color: var(--text-main);
+            text-transform: uppercase;
+        }
+        .nav-item:hover {
+            background: var(--bg-subtle);
+        }
+        .nav-item.active {
+            background: var(--text-main);
+            color: #ffffff;
+        }
+        .nav-item.active .nav-num {
+            color: #a3a3a3;
+        }
+        .nav-item.active .nav-title {
+            color: #ffffff;
+        }
+
+        /* 构成主义网格系统与看板模块 */
+        .swiss-section {
+            display: none;
+        }
+        .swiss-section.active {
+            display: block;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 构成主义六联数字矩阵 (Metrics Matrix) */
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1.25rem;
+            margin-bottom: 2.5rem;
+        }
+        .matrix-card {
+            border: 1px solid var(--border-stark);
+            background: var(--bg-surface);
+            padding: 1.25rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .matrix-idx {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+        }
+        .matrix-num {
+            font-size: 3rem;
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+        .matrix-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .matrix-desc {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        /* 构成主义图文块与边框卡片 */
+        .swiss-card {
+            border: 1px solid var(--border-stark);
+            background: var(--bg-surface);
+            margin-bottom: 2rem;
+        }
+        .card-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-stark);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-surface);
+        }
+        .card-header h3 {
+            font-size: 1.05rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -0.01em;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin: 0;
+        }
+        .card-header .header-tag {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-grid);
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* 瑞士标准排版表格 */
+        .swiss-table-wrapper {
+            overflow-x: auto;
+        }
+        table.swiss-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.85rem;
+        }
+        table.swiss-table th {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 700;
+            padding: 0.85rem 1rem;
+            background: var(--bg-subtle);
+            border-bottom: 1.5px solid var(--border-stark);
+            color: var(--text-main);
+        }
+        table.swiss-table td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid var(--border-grid);
+            vertical-align: top;
+        }
+        table.swiss-table tr:hover td {
+            background: #faf9f6;
+        }
+
+        /* 标签与徽章 Badge (构成主义非圆角) */
+        .badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 0.15rem 0.45rem;
+            border: 1px solid var(--border-stark);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .badge-stable { background: #e6f4ea; color: #047857; border-color: #047857; }
+        .badge-learn { background: #eff6ff; color: #1d4ed8; border-color: #1d4ed8; }
+        .badge-probation { background: #fdf4ff; color: #7e22ce; border-color: #7e22ce; }
+        .badge-pending { background: #fffbeb; color: #b45309; border-color: #b45309; }
+        .badge-conflict { background: #fef2f2; color: #dc2626; border-color: #dc2626; }
+        .badge-archived { background: #f4f4f5; color: #71717a; border-color: #a1a1aa; }
+
+        /* 构成主义按钮 */
+        .btn {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 0.45rem 1rem;
+            border: 1px solid var(--border-stark);
+            background: var(--bg-surface);
+            color: var(--text-main);
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: all 0.1s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .btn:hover {
+            background: var(--text-main);
+            color: #ffffff;
+        }
+        .btn-primary {
+            background: var(--text-main);
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            background: var(--accent-red);
+            border-color: var(--accent-red);
+        }
+        .btn-danger {
+            background: #fff;
+            color: var(--accent-red);
+            border-color: var(--accent-red);
+        }
+        .btn-danger:hover {
+            background: var(--accent-red);
+            color: #fff;
+        }
+        .btn-success {
+            background: #fff;
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+        }
+        .btn-success:hover {
+            background: var(--accent-green);
+            color: #fff;
+        }
+        .btn-sm {
+            padding: 0.25rem 0.6rem;
+            font-size: 0.72rem;
+        }
+
+        /* 构成主义双栏对比 / 影子回答对比 (Shadow Split) */
+        .split-compare {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-top: 1rem;
+        }
+        .compare-box {
+            padding: 1.25rem;
+            border: 1px solid var(--border-grid);
+            background: #fbfbfa;
+        }
+        .compare-box.old-box { border-top: 3px solid var(--accent-green); }
+        .compare-box.new-box { border-top: 3px solid var(--accent-red); }
+        .compare-label {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 在线沙盒交互区 (Playground) */
+        .playground-form {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .input-swiss {
+            width: 100%;
+            padding: 0.85rem 1rem;
+            font-family: var(--font-sans);
+            font-size: 0.95rem;
+            border: 1px solid var(--border-stark);
+            background: #ffffff;
+            color: var(--text-main);
+        }
+        .input-swiss:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 1px var(--accent-blue);
+        }
+        .answer-output-box {
+            border: 1px solid var(--border-stark);
+            background: #ffffff;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-left: 5px solid var(--accent-blue);
+        }
+        .source-badge-box {
+            margin-top: 1.25rem;
+            padding-top: 1rem;
+            border-top: 1px dashed var(--border-grid);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* 响应式适配 */
+        @media (max-width: 1100px) {
+            .matrix-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .app-layout { padding: 1.25rem 1rem; }
+            header.swiss-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+            .matrix-grid { grid-template-columns: repeat(2, 1fr); }
+            .split-compare { grid-template-columns: 1fr; }
+            .playground-form { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-layout">
+    <!-- 1. 瑞士国际主义大字标题头 -->
+    <header class="swiss-header">
+        <div>
+            <div class="header-brand">
+                <h1><span class="brand-dot"></span>BETTER•RAG</h1>
+                <span class="header-subtitle">自供证 · 自愈型企业知识自治引擎</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem;">
+                SYSTEM ARCHITECTURE: SQLITE-VEC WAL • AST TREE CHUNKING • 7-DAY PROBATION SANDBOX • APSCHEDULER CRON 03:00
+            </div>
+        </div>
+        <div class="header-status">
+            <span class="status-pill"><span class="live-dot"></span>ENGINE RUNNING</span>
+            <button class="btn btn-primary" onclick="triggerSyncWorkspace()">
+                ↻ 增量同步工作区
+            </button>
+        </div>
+    </header>
+
+    <!-- 2. 瑞士网格式分栏导航 (6 大治理模块) -->
+    <nav class="swiss-nav">
+        <button class="nav-item active" onclick="switchTab('tab-matrix')">
+            <span class="nav-num">01 // MATRIX</span>
+            <span class="nav-title">治理大盘</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab-corpus')">
+            <span class="nav-num">02 // CORPUS</span>
+            <span class="nav-title">知识全景</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab-conflicts')">
+            <span class="nav-num">03 // CONFLICTS</span>
+            <span class="nav-title">冲突流水线</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab-probation')">
+            <span class="nav-num">04 // PROBATION</span>
+            <span class="nav-title">举证与例外</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab-playground')">
+            <span class="nav-num">05 // PLAYGROUND</span>
+            <span class="nav-title">检索问答沙盒</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('tab-audit')">
+            <span class="nav-num">06 // AUDIT TRAIL</span>
+            <span class="nav-title">事实审计流</span>
+        </button>
+    </nav>
+
+    <!-- ======================================================================
+         SECTION 01: 治理大盘 (MATRIX & METRICS)
+         ====================================================================== -->
+    <section id="tab-matrix" class="swiss-section active">
+        <!-- 6 联构成主义核心指标矩阵 -->
+        <div class="matrix-grid">
+            <div class="matrix-card" style="border-top: 4px solid var(--accent-green);">
+                <div class="matrix-idx">01 / STABLE</div>
+                <div class="matrix-num" id="stat-stable" style="color: var(--accent-green);">-</div>
+                <div class="matrix-label">权威稳定基石</div>
+                <div class="matrix-desc">置信度 ≥ 0.75 · 专家/转正</div>
+            </div>
+            <div class="matrix-card" style="border-top: 4px solid var(--accent-blue);">
+                <div class="matrix-idx">02 / LEARNING</div>
+                <div class="matrix-num" id="stat-learn" style="color: var(--accent-blue);">-</div>
+                <div class="matrix-label">学习演进区</div>
+                <div class="matrix-desc">0.30 ~ 0.749 · 机器写入上限</div>
+            </div>
+            <div class="matrix-card" style="border-top: 4px solid var(--accent-yellow);">
+                <div class="matrix-idx">03 / PROBATION</div>
+                <div class="matrix-num" id="stat-prob" style="color: var(--accent-yellow);">-</div>
+                <div class="matrix-label">7天举证冻结期</div>
+                <div class="matrix-desc">置信度 ≥ 0.60 · 免时间衰减</div>
+            </div>
+            <div class="matrix-card" style="border-top: 4px solid #b45309;">
+                <div class="matrix-idx">04 / PENDING</div>
+                <div class="matrix-num" id="stat-pending" style="color: #b45309;">-</div>
+                <div class="matrix-label">待处置 / 挑刺待审</div>
+                <div class="matrix-desc">0.749 / 0.599 / 人工复核</div>
+            </div>
+            <div class="matrix-card" style="border-top: 4px solid var(--accent-red);">
+                <div class="matrix-idx">05 / CONFLICTS</div>
+                <div class="matrix-num" id="stat-conflicts" style="color: var(--accent-red);">-</div>
+                <div class="matrix-label">活跃制度互斥</div>
+                <div class="matrix-desc">Pipe 1/2 捕获 · 满3次红灯</div>
+            </div>
+            <div class="matrix-card" style="border-top: 4px solid var(--text-main);">
+                <div class="matrix-idx">06 / AUDIT</div>
+                <div class="matrix-num" id="stat-events" style="color: var(--text-main);">-</div>
+                <div class="matrix-label">不可变审计事实</div>
+                <div class="matrix-desc">免外键炸弹 · 事实记录</div>
+            </div>
+        </div>
+
+        <!-- 架构流转全景与最新速览 (双栏布局) -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="swiss-card">
+                <div class="card-header">
+                    <h3>01.1 // 知识生命周期状态机架构</h3>
+                    <span class="header-tag">SINGLE-VARIABLE STATE MACHINE</span>
+                </div>
+                <div class="card-body">
+                    <div style="font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.8; color: var(--text-secondary); background: #faf9f6; padding: 1.25rem; border: 1px solid var(--border-grid);">
+                        <div>[1] 初始录入 &rarr; <b>学习区 (0.30)</b> (若由 official/ 导入则直进 0.85 稳定区)</div>
+                        <div>[2] 正反馈点赞 &rarr; 每次 +0.016 (主干 0.8 权重) &rarr; <b>受 0.749 机器写入上限保护</b></div>
+                        <div>[3] 分值达 0.60 &rarr; <b>进入 7 天举证冻结期</b> (锁定 7 天免时间衰减，负反馈则立即退出)</div>
+                        <div>[4] 满 7 天 &rarr; <b>沙箱 AI 挑刺审查</b> (通过 &rarr; 0.85 转正；存疑 &rarr; 流转 pending 例外待审)</div>
+                        <div>[5] 闲置超时 &rarr; <b>三段式完整降级</b> (0.749 待处置 &rarr; 0.599 退回学习区 &rarr; 0.05 归档并级联挂起孤儿子块)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="swiss-card">
+                <div class="card-header">
+                    <h3>01.2 // 待办处理速览</h3>
+                    <span class="header-tag">ACTIONS QUEUE</span>
+                </div>
+                <div class="card-body" id="overview-pending-list" style="max-height: 195px; overflow-y: auto;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 2rem 0;">加载待办中...</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 02: 知识全景 (CORPUS & BLOCKS)
+         ====================================================================== -->
+    <section id="tab-corpus" class="swiss-section">
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>02.1 // 制度文档材料库 (CORPUS MATERIALS)</h3>
+                <span class="header-tag">TOTAL: <span id="materials-count">0</span> FILES</span>
+            </div>
+            <div class="swiss-table-wrapper">
+                <table class="swiss-table">
+                    <thead>
+                        <tr>
+                            <th>材料ID</th>
+                            <th>制度规章标题</th>
+                            <th>本地文件源路径</th>
+                            <th>总切片数 / 权威数</th>
+                            <th>常青免衰减</th>
+                            <th>录入通道</th>
+                            <th>最近更新时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="materials-table-body">
+                        <tr><td colspan="7" style="text-align: center; padding: 2rem;">加载材料库中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>02.2 // 知识切片与置信度透视 (KNOWLEDGE CHUNKS MATRIX)</h3>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">过滤分区:</span>
+                    <select id="chunk-zone-filter" class="input-swiss" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; width: auto;" onchange="loadBlocksData()">
+                        <option value="">全部切片</option>
+                        <option value="stable">权威稳定区 (≥0.75)</option>
+                        <option value="learn">学习演进区 (&lt;0.75)</option>
+                        <option value="probation">7天举证冻结期</option>
+                        <option value="pending">待处置/待审</option>
+                        <option value="archived">已归档退场</option>
+                    </select>
+                </div>
+            </div>
+            <div class="swiss-table-wrapper">
+                <table class="swiss-table">
+                    <thead>
+                        <tr>
+                            <th>切片ID</th>
+                            <th>章节层级上下文</th>
+                            <th style="min-width: 280px;">条款具体内容</th>
+                            <th>存储值 / 实时有效值</th>
+                            <th>TENURE</th>
+                            <th>父子绑定 / 特殊标记</th>
+                            <th>治理分区状态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocks-table-body">
+                        <tr><td colspan="7" style="text-align: center; padding: 2rem;">加载知识切片中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 03: 冲突流水线 (SILENT SHADOW & CONFLICTS)
+         ====================================================================== -->
+    <section id="tab-conflicts" class="swiss-section">
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>03.1 // 两级冲突检测与静默影子台账 (SILENT SHADOW PIPELINE)</h3>
+                <span class="header-tag">PIPE-1 STATIC + PIPE-2 DYNAMIC</span>
+            </div>
+            <div class="card-body" style="padding-bottom: 0.5rem;">
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    <b>静默影子原则</b>：前台问答依然使用权威旧规生成可靠答案，后台生成新规影子快照。当碰撞达到 <b>3 次红灯阈值</b> 时，触发飞书卡片与管理看板一键原子接替。
+                </p>
+            </div>
+            <div class="swiss-table-wrapper">
+                <table class="swiss-table">
+                    <thead>
+                        <tr>
+                            <th>冲突ID</th>
+                            <th>旧规防守者 (DEFENDER)</th>
+                            <th>提议挑战新规 (CHALLENGER)</th>
+                            <th>碰撞次数</th>
+                            <th>判定结论 / 状态</th>
+                            <th>影子回答快照对照</th>
+                            <th>一键原子更替</th>
+                        </tr>
+                    </thead>
+                    <tbody id="conflicts-table-body">
+                        <tr><td colspan="7" style="text-align: center; padding: 2rem;">加载冲突台账中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 04: 举证与例外 (PROBATION & AI CRITIQUE)
+         ====================================================================== -->
+    <section id="tab-probation" class="swiss-section">
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>04.1 // 7 天举证期与沙箱 AI 挑刺审查 (CRITIQUE SANDBOX)</h3>
+                <span class="header-tag">PROMPT INJECTION DEFENSE READY</span>
+            </div>
+            <div class="card-body">
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    知识块达到 <b>0.60</b> 置信度即被冻结锁定 7 天；满 7 天由大模型扮演反方辩友（严格在 <code>&lt;untrusted_text&gt;</code> 沙箱隔离内）对候选新块挑刺。合格者自动转正 0.85，存疑者流转至下方待审队列。
+                </p>
+            </div>
+            <div class="swiss-table-wrapper">
+                <table class="swiss-table">
+                    <thead>
+                        <tr>
+                            <th>知识块ID</th>
+                            <th>章节与上下文</th>
+                            <th style="min-width: 280px;">条款内容</th>
+                            <th>当前置信度</th>
+                            <th>举证截止时间 / 冻结天数</th>
+                            <th>沙箱审查结论 / 存疑理由</th>
+                            <th>管理员人工裁决</th>
+                        </tr>
+                    </thead>
+                    <tbody id="probation-table-body">
+                        <tr><td colspan="7" style="text-align: center; padding: 2rem;">加载举证与例外待审队列中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 05: 在线交互测试沙盒 (PLAYGROUND & LIVE RETRIEVE)
+         ====================================================================== -->
+    <section id="tab-playground" class="swiss-section">
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>05.1 // 端到端在线检索与问答体验沙盒</h3>
+                <span class="header-tag">HYBRID DENSE + BM25 + SALIENCE FEEDBACK</span>
+            </div>
+            <div class="card-body">
+                <div class="playground-form">
+                    <input type="text" id="play-query" class="input-swiss" placeholder="输入测试问题，如：请问晚上几点之后可以打车报销？或 出差住宿标准每人每天多少？" value="请问晚上几点之后可以打车报销？">
+                    <button class="btn btn-primary" onclick="runPlaygroundSearch()">▶ 混合检索与大模型问答</button>
+                </div>
+                <div style="display: flex; gap: 2rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
+                    <div>稠密权重 α: <b>0.75</b> (FastEmbed BGE)</div>
+                    <div>BM25 权重: <b>0.25</b> (Jieba FTS5)</div>
+                    <div>置信度动态加权: <b>C_eff(B) 实时乘数</b></div>
+                    <div>探索席位机制: <b>已就绪 (冷启动保全)</b></div>
+                </div>
+
+                <!-- 生成答案呈现区 -->
+                <div id="play-answer-container" style="display: none;">
+                    <div class="answer-output-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <span style="font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700; color: var(--accent-blue);">● LLM RESPONSE (带来源透明标牌)</span>
+                            <div style="display: flex; gap: 0.5rem;" id="play-feedback-actions">
+                                <span style="font-size: 0.75rem; color: var(--text-muted); align-self: center;">模拟三轨反馈:</span>
+                                <button class="btn btn-sm btn-success" onclick="sendPlayFeedback('pos')">👍 点赞 (+0.02)</button>
+                                <button class="btn btn-sm btn-danger" onclick="sendPlayFeedback('neg_dislike')">👎 点踩 (-0.02)</button>
+                                <button class="btn btn-sm btn-danger" onclick="sendPlayFeedback('neg_escalate')">🚨 投诉人工 (-0.03)</button>
+                            </div>
+                        </div>
+                        <div id="play-answer-text" style="font-size: 0.95rem; line-height: 1.7; white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+
+                <!-- 召回知识块明细评分透视表 -->
+                <h4 style="font-size: 0.95rem; font-weight: 800; text-transform: uppercase; margin-bottom: 0.75rem;">
+                    05.2 // 召回知识块评分拆解与前置条件组装透视
+                </h4>
+                <div class="swiss-table-wrapper">
+                    <table class="swiss-table">
+                        <thead>
+                            <tr>
+                                <th>序号</th>
+                                <th>块ID / 章节</th>
+                                <th>最终融合分 (SCORE)</th>
+                                <th>稠密向量分 (SIM)</th>
+                                <th>BM25 关键词分</th>
+                                <th>有效置信度 C_EFF</th>
+                                <th>探索保全席位</th>
+                                <th>条款内容摘要</th>
+                            </tr>
+                        </thead>
+                        <tbody id="play-hits-tbody">
+                            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">输入问题后点击上方按钮执行检索体验</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================================
+         SECTION 06: 不可变审计事实流 (FACT AUDIT TRAIL)
+         ====================================================================== -->
+    <section id="tab-audit" class="swiss-section">
+        <div class="swiss-card">
+            <div class="card-header">
+                <h3>06.1 // 系统不可变审计事件事实流 (IMMUTABLE AUDIT LOG)</h3>
+                <span class="header-tag">APPEND-ONLY FACT LEDGER</span>
+            </div>
+            <div class="swiss-table-wrapper">
+                <table class="swiss-table">
+                    <thead>
+                        <tr>
+                            <th>事件ID</th>
+                            <th>时间戳 (UTC)</th>
+                            <th>操作人 / 来源 (ACTOR)</th>
+                            <th>事件类型 (EVENT TYPE)</th>
+                            <th>知识块ID</th>
+                            <th>分值变动 (DELTA)</th>
+                            <th>变动后置信度</th>
+                            <th>审计事实与批注说明</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-table-body">
+                        <tr><td colspan="8" style="text-align: center; padding: 2rem;">加载审计日志中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- ==========================================================================
+     前端控制器与数据绑定逻辑 (Vanilla JS, 零外部框架依赖)
+     ========================================================================== -->
+<script>
+    let currentSessionId = "";
+
+    // 标签页切换器
+    function switchTab(tabId) {
+        document.querySelectorAll('.swiss-section').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+        const target = document.getElementById(tabId);
+        if (target) target.classList.add('active');
+
+        // 对应高亮当前导航按钮
+        const mapping = {
+            'tab-matrix': 0,
+            'tab-corpus': 1,
+            'tab-conflicts': 2,
+            'tab-probation': 3,
+            'tab-playground': 4,
+            'tab-audit': 5
+        };
+        const idx = mapping[tabId];
+        const navBtns = document.querySelectorAll('.nav-item');
+        if (navBtns[idx]) navBtns[idx].classList.add('active');
+
+        // 按需拉取对应数据
+        if (tabId === 'tab-matrix') loadDashboardMetrics();
+        if (tabId === 'tab-corpus') loadCorpusData();
+        if (tabId === 'tab-conflicts') loadConflictsData();
+        if (tabId === 'tab-probation') loadProbationData();
+        if (tabId === 'tab-audit') loadAuditData();
+    }
+
+    // 格式化辅助
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderZoneBadge(zone, status) {
+        if (status === 'archived') return '<span class="badge badge-archived">已归档</span>';
+        if (status === 'suspended') return '<span class="badge badge-pending">孤儿挂起</span>';
+        if (zone === 'stable') return '<span class="badge badge-stable">权威基石</span>';
+        if (zone === 'probation') return '<span class="badge badge-probation">举证冻结</span>';
+        if (zone === 'pending') return '<span class="badge badge-pending">待处置</span>';
+        return '<span class="badge badge-learn">学习演进</span>';
+    }
+
+    // ==================== 数据加载函数 ====================
+
+    // 1. 加载治理大盘指标
+    async function loadDashboardMetrics() {
+        try {
+            const resp = await fetch('/api/v1/dashboard/stats');
+            const res = await resp.json();
+            if (res.status === 'ok') {
+                const d = res.data;
+                document.getElementById('stat-stable').innerText = d.stable_blocks;
+                document.getElementById('stat-learn').innerText = d.learning_blocks;
+                document.getElementById('stat-prob').innerText = d.probation_blocks;
+                document.getElementById('stat-pending').innerText = d.pending_blocks;
+                document.getElementById('stat-conflicts').innerText = d.active_conflicts;
+                document.getElementById('stat-events').innerText = d.total_events;
+            }
+
+            // 加载速览待办
+            const excResp = await fetch('/api/v1/exceptions');
+            const exc = await excResp.json();
+            const listEl = document.getElementById('overview-pending-list');
+            if (exc.status === 'ok' && exc.data.length > 0) {
+                listEl.innerHTML = exc.data.slice(0, 5).map(e => `
+                    <div style="border-bottom: 1px solid var(--border-grid); padding: 0.5rem 0; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 0.8rem;">${escapeHtml(e.context_prefix || '正文')} (${e.conf_stored.toFixed(2)})</div>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(e.pending_reason || '待审核')}</div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="adjudicateBlock('${e.id}', 'pass')">转正</button>
+                    </div>
+                `).join('');
+            } else {
+                listEl.innerHTML = '<div style="font-size: 0.8rem; color: var(--accent-green); text-align: center; padding: 2rem 0;">✓ 暂无待处理积压事项</div>';
+            }
+        } catch (e) {
+            console.error("加载指标失败:", e);
+        }
+    }
+
+    // 2. 加载文档库与知识切片
+    async function loadCorpusData() {
+        try {
+            // 材料列表
+            const matResp = await fetch('/api/v1/materials');
+            const mats = await matResp.json();
+            const matTbody = document.getElementById('materials-table-body');
+            document.getElementById('materials-count').innerText = mats.count || 0;
+
+            if (mats.status === 'ok' && mats.data.length > 0) {
+                matTbody.innerHTML = mats.data.map(m => `
+                    <tr>
+                        <td><code>${escapeHtml(m.id)}</code></td>
+                        <td><b>${escapeHtml(m.title)}</b></td>
+                        <td><small style="color: var(--text-muted);">${escapeHtml(m.source_path)}</small></td>
+                        <td><b>${m.total_blocks}</b> 块 (权威: <span style="color: var(--accent-green);">${m.stable_blocks}</span>)</td>
+                        <td>${m.is_evergreen ? '<span class="badge badge-stable">常青免衰减</span>' : '<span style="color: var(--text-muted);">正常衰减</span>'}</td>
+                        <td><code>${escapeHtml(m.imported_by || 'auto')}</code></td>
+                        <td><small style="font-family: var(--font-mono);">${escapeHtml(m.updated_at.substring(0, 19))}</small></td>
+                    </tr>
+                `).join('');
+            } else {
+                matTbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">暂无材料，请放入文档至 data/workspace 目录</td></tr>';
+            }
+
+            // 切片列表
+            await loadBlocksData();
+        } catch (e) {
+            console.error("加载材料库失败:", e);
+        }
+    }
+
+    async function loadBlocksData() {
+        try {
+            const filterZone = document.getElementById('chunk-zone-filter').value;
+            let url = '/api/v1/blocks?limit=150';
+            if (filterZone === 'pending' || filterZone === 'archived') {
+                url += `&status=${filterZone}`;
+            }
+            const resp = await fetch(url);
+            const blocks = await resp.json();
+            const bTbody = document.getElementById('blocks-table-body');
+
+            if (blocks.status === 'ok' && blocks.data.length > 0) {
+                let filtered = blocks.data;
+                if (filterZone && filterZone !== 'pending' && filterZone !== 'archived') {
+                    filtered = filtered.filter(b => b.zone === filterZone);
+                }
+
+                bTbody.innerHTML = filtered.map(b => `
+                    <tr>
+                        <td><code>${escapeHtml(b.id)}</code></td>
+                        <td><small>${escapeHtml(b.context_prefix)}</small></td>
+                        <td style="max-width: 320px; line-height: 1.4;">${escapeHtml(b.content.substring(0, 110))}${b.content.length > 110 ? '...' : ''}</td>
+                        <td>
+                            <b>${b.conf_stored.toFixed(2)}</b>
+                            <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">(实时: ${b.eff_conf.toFixed(2)})</span>
+                        </td>
+                        <td><span style="font-family: var(--font-mono); font-weight: 700;">${b.tenure}</span></td>
+                        <td>
+                            ${b.is_condition_header ? '<span class="badge badge-pending">前置条件头</span>' : ''}
+                            ${b.parent_scope_id ? `<small style="font-family: var(--font-mono); color: var(--text-muted);">↳ 锚定: ${escapeHtml(b.parent_scope_id.substring(0, 12))}...</small>` : ''}
+                        </td>
+                        <td>${renderZoneBadge(b.zone, b.status)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                bTbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">暂无匹配切片</td></tr>';
+            }
+        } catch (e) {
+            console.error("加载切片失败:", e);
+        }
+    }
+
+    // 3. 加载冲突台账
+    async function loadConflictsData() {
+        try {
+            const resp = await fetch('/api/v1/conflicts');
+            const data = await resp.json();
+            const tbody = document.getElementById('conflicts-table-body');
+
+            if (data.status === 'ok' && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(c => `
+                    <tr>
+                        <td><code>${escapeHtml(c.id)}</code></td>
+                        <td style="max-width: 220px;"><small>${escapeHtml(c.defender_content.substring(0, 90))}...</small></td>
+                        <td style="max-width: 220px;"><small>${escapeHtml(c.challenger_content.substring(0, 90))}...</small></td>
+                        <td>
+                            <b style="font-size: 1.1rem; color: ${c.clash_count >= 3 ? 'var(--accent-red)' : 'var(--text-main)'};">${c.clash_count}</b> / 3
+                            ${c.clash_count >= 3 ? '<span class="badge badge-conflict">红灯预警</span>' : ''}
+                        </td>
+                        <td>
+                            <span class="badge ${c.verdict === 'conflict' ? 'badge-conflict' : 'badge-stable'}">${escapeHtml(c.verdict)}</span>
+                            <small>(${escapeHtml(c.status)})</small>
+                        </td>
+                        <td style="max-width: 240px; font-size: 0.75rem;">
+                            ${c.shadow_answer_new ? `
+                                <div style="background: var(--bg-subtle); padding: 0.4rem; border: 1px solid var(--border-grid);">
+                                    <div style="color: var(--accent-green); font-weight: 700;">${escapeHtml(c.shadow_answer_old || '旧回答')}</div>
+                                    <div style="color: var(--accent-red); font-weight: 700; margin-top: 0.2rem;">${escapeHtml(c.shadow_answer_new)}</div>
+                                </div>
+                            ` : '<span style="color: var(--text-muted);">等待问答碰撞生成快照</span>'}
+                        </td>
+                        <td>
+                            ${c.status !== 'resolved' ? `
+                                <button class="btn btn-sm btn-primary" onclick="amendReplace('${c.id}')">⚡ 一键接替</button>
+                            ` : '<span style="color: var(--accent-green); font-weight: 700;">✓ 已原子交接</span>'}
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">暂无检测到制度互斥记录</td></tr>';
+            }
+        } catch (e) {
+            console.error("加载冲突失败:", e);
+        }
+    }
+
+    // 4. 加载举证与例外待审
+    async function loadProbationData() {
+        try {
+            const resp = await fetch('/api/v1/exceptions');
+            const data = await resp.json();
+            const tbody = document.getElementById('probation-table-body');
+
+            if (data.status === 'ok' && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(b => `
+                    <tr>
+                        <td><code>${escapeHtml(b.id)}</code></td>
+                        <td><small>${escapeHtml(b.context_prefix || '正文')}</small></td>
+                        <td style="max-width: 280px;">${escapeHtml(b.content.substring(0, 100))}...</td>
+                        <td><b>${b.conf_stored.toFixed(2)}</b></td>
+                        <td>
+                            ${b.probation_until ? `
+                                <span class="badge badge-probation">冻结至 ${b.probation_until.substring(0, 10)}</span>
+                            ` : '<span style="color: var(--text-muted);">非举证冻结</span>'}
+                        </td>
+                        <td><small style="color: ${b.pending_reason ? 'var(--accent-red)' : 'var(--text-muted)'}; font-weight: 600;">${escapeHtml(b.pending_reason || '正常审核中')}</small></td>
+                        <td>
+                            <div style="display: flex; gap: 0.4rem;">
+                                <button class="btn btn-sm btn-success" onclick="adjudicateBlock('${b.id}', 'pass')">通过 (0.85)</button>
+                                <button class="btn btn-sm btn-danger" onclick="adjudicateBlock('${b.id}', 'reject')">驳回 (0.30)</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">暂无待审核举证知识或异常切片</td></tr>';
+            }
+        } catch (e) {
+            console.error("加载举证待办失败:", e);
+        }
+    }
+
+    // 5. 加载不可变审计事实流
+    async function loadAuditData() {
+        try {
+            const resp = await fetch('/api/v1/events?limit=60');
+            const data = await resp.json();
+            const tbody = document.getElementById('events-table-body');
+
+            if (data.status === 'ok' && data.data.length > 0) {
+                tbody.innerHTML = data.data.map(e => `
+                    <tr>
+                        <td><code>#${e.id}</code></td>
+                        <td><small style="font-family: var(--font-mono);">${escapeHtml(e.ts.substring(0, 19))}</small></td>
+                        <td><code>${escapeHtml(e.actor || 'engine')}</code></td>
+                        <td><span class="badge ${e.event_type.includes('PROMOTE') || e.event_type.includes('PASS') ? 'badge-stable' : (e.event_type.includes('CONFLICT') || e.event_type.includes('DEMOTE') ? 'badge-conflict' : 'badge-learn')}">${escapeHtml(e.event_type)}</span></td>
+                        <td><code>${escapeHtml(e.block_id || '-')}</code></td>
+                        <td style="font-family: var(--font-mono); font-weight: 700; color: ${e.delta > 0 ? 'var(--accent-green)' : (e.delta < 0 ? 'var(--accent-red)' : 'var(--text-main)')};">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(3)}</td>
+                        <td><b>${e.confidence_after.toFixed(3)}</b></td>
+                        <td style="font-size: 0.8rem;">${escapeHtml(e.note || '')}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">暂无审计事件</td></tr>';
+            }
+        } catch (e) {
+            console.error("加载审计日志失败:", e);
+        }
+    }
+
+    // ==================== 交互行为函数 ====================
+
+    // 在线检索与问答沙盒
+    async function runPlaygroundSearch() {
+        const query = document.getElementById('play-query').value.trim();
+        if (!query) return;
+
+        const hitsTbody = document.getElementById('play-hits-tbody');
+        hitsTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 1.5rem;">执行稠密向量 + BM25 混合检索计算中...</td></tr>';
+
+        try {
+            // 1. 调用混合检索测试端点
+            const retResp = await fetch('/api/v1/test_retrieve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, top_k: 5, alpha: 0.75 })
+            });
+            const retData = await retResp.json();
+
+            if (retData.status === 'ok' && retData.data.length > 0) {
+                hitsTbody.innerHTML = retData.data.map((h, i) => `
+                    <tr style="${h.is_exploration_seat ? 'background: #fdf2f8;' : ''}">
+                        <td><b>0${i+1}</b></td>
+                        <td>
+                            <code>${escapeHtml(h.block_id)}</code><br>
+                            <small style="color: var(--text-muted);">${escapeHtml(h.context_prefix)}</small>
+                        </td>
+                        <td><b style="font-size: 1rem; color: var(--accent-blue);">${h.final_score.toFixed(4)}</b></td>
+                        <td>${h.dense_sim.toFixed(4)}</td>
+                        <td>${h.bm25_score.toFixed(4)}</td>
+                        <td><b>${h.eff_conf.toFixed(4)}</b></td>
+                        <td>
+                            ${h.is_exploration_seat ? '<span class="badge badge-conflict">🎯 探索保全席位</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">正常排序</span>'}
+                        </td>
+                        <td style="max-width: 260px; font-size: 0.78rem;">${escapeHtml(h.content)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                hitsTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">未检索到高相关有效知识块</td></tr>';
+            }
+
+            // 2. 调用标准 /v1/chat/completions 获取大模型完整回答
+            currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 10);
+            const chatResp = await fetch('/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'deepseek-chat',
+                    messages: [{ role: 'user', content: query }],
+                    stream: false,
+                    session_id: currentSessionId
+                })
+            });
+            const chatData = await chatResp.json();
+            if (chatData.choices && chatData.choices[0]) {
+                document.getElementById('play-answer-container').style.display = 'block';
+                document.getElementById('play-answer-text').innerText = chatData.choices[0].message.content;
+            }
+        } catch (e) {
+            console.error("检索问答失败:", e);
+            alert("请求执行失败: " + e.message);
+        }
+    }
+
+    // 发送沙盒反馈 (三轨归因即时测试)
+    async function sendPlayFeedback(outcome) {
+        if (!currentSessionId) {
+            alert("请先发起一次测试问答");
+            return;
+        }
+        try {
+            const resp = await fetch('/api/v1/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: currentSessionId,
+                    outcome: outcome,
+                    note: '在线沙盒即时归因测试'
+                })
+            });
+            const res = await resp.json();
+            if (res.status === 'ok') {
+                alert(`反馈上报成功！已按显着性加权完成对引用块的结算 (结算块数: ${res.count})`);
+                loadDashboardMetrics();
+            }
+        } catch (e) {
+            alert("反馈上报失败: " + e.message);
+        }
+    }
+
+    // 触发增量同步
+    async function triggerSyncWorkspace() {
+        if (!confirm("立即触发本地知识目录增量扫描与向量解析？")) return;
+        try {
+            const resp = await fetch('/api/v1/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_dir: 'data/workspace' })
+            });
+            const res = await resp.json();
+            alert(`目录增量同步完成！解析文件: ${res.scanned_files} 篇，产生切片: ${res.total_blocks} 个`);
+            loadDashboardMetrics();
+            loadCorpusData();
+        } catch (e) {
+            alert("同步异常: " + e.message);
+        }
+    }
+
+    // 人工裁决例外知识
+    async function adjudicateBlock(blockId, action) {
+        const title = action === 'pass' ? '一键特批转正至 0.85 稳定区' : '驳回重置回 0.30 学习区';
+        if (!confirm(`确认对知识块 [${blockId}] 执行【${title}】？`)) return;
+
+        try {
+            const resp = await fetch(`/api/v1/exceptions/${blockId}/adjudicate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action, note: '控制台管理员操作' })
+            });
+            const res = await resp.json();
+            if (res.status === 'ok') {
+                alert("裁决操作成功完成！");
+                loadDashboardMetrics();
+                loadProbationData();
+            } else {
+                alert("操作失败: " + (res.detail || "未知异常"));
+            }
+        } catch (e) {
+            alert("裁决异常: " + e.message);
+        }
+    }
+
+    // 制度修正案一键原子接替
+    async function amendReplace(conflictId) {
+        if (!confirm("确认执行制度更替？挑战新规将晋升0.85稳定区，旧规将自动归档并建立取代链。")) return;
+        try {
+            const resp = await fetch(`/api/v1/amend/${conflictId}/replace`, {
+                method: 'POST'
+            });
+            const res = await resp.json();
+            if (res.status === 'ok') {
+                alert("修正案原子更替完成！");
+                loadDashboardMetrics();
+                loadConflictsData();
+            } else {
+                alert("更替失败: " + (res.detail || "未知异常"));
+            }
+        } catch (e) {
+            alert("接替异常: " + e.message);
+        }
+    }
+
+    // 页面初始化
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDashboardMetrics();
+    });
+</script>
+
+</body>
+</html>
