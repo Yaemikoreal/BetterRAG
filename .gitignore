@@ -1,6 +1,21 @@
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# Secrets & local env
+.env
+
+# Local runtime logs
+*.log
+
+# Agent tooling cache
+.commandcode/
 
 # DSH sandbox recovery artifacts
 .dsh-acl-recovery/
+
