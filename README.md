@@ -4,14 +4,19 @@
 
 > 一句话内核：整个系统只有一个状态变量「置信度」，三级分区（学习区/预备区/稳定区）是它的区间投影，全生命周期是一连串带审计的置信度事件。新知识当天可用（诚实标注来源）；**被动结局供证**（采纳只保鲜不积分、沉默计零），**慢升**（举证期七天 + AI 挑刺自动转正），**快降**（负证据加衰减自动退场），冲突走仲裁阶梯与铁律红灯（挑战者挂起保全、修正案一键接替），归档不删除、审计链全程可回放。
 
-**项目现状（2026-10-26）：生产版 v1.0 已落地。** 引擎（置信度单变量/举证期自证晋升/快降/铁律红灯+修正案/仲裁阶梯）、SQLite 持久化（规格 §10 schema）、收纳管线（照搬原则+幂等）、检索管线（TF-IDF×有效置信度+探索席）、LLM 角色映射（OpenAI 兼容 + 本地确定性兜底）、stdlib HTTP API（§13 全端点）、三页面 Web 应用（问答/例外裁决台/仪表盘+知识星图）全部实现；**49 项单测全绿 + 17 项端到端 HTTP 验证通过**。另有 `BetterRAG-demo.html`（单文件十镜演示，离线可跑）。
+**项目现状（2026-10-26）：生产版 v1.0 已落地，仓库内有两条互补交付线。**
 
-## 快速开始（生产版）
+- **零依赖线（本目录 `engine/` + `web/app.html`）**：置信度单变量引擎（举证期自证晋升/快降/铁律红灯+修正案/仲裁阶梯）、SQLite 持久化（§10 schema）、收纳管线（照搬原则+内容指纹幂等）、检索（TF-IDF×有效置信度+探索席）、LLM 角色映射（OpenAI 兼容+本地确定性兜底）、stdlib HTTP API（§13 全端点）、三页面 Web 应用（问答/例外裁决台/仪表盘+知识星图）。**49 项单测全绿 + 17 项端到端 HTTP 验证通过**，`python -m unittest discover -s tests/engine` 一键回归。
+- **容器化交付线（`src/`，Docker）**：FastAPI（OpenAI 兼容 /v1/chat/completions JSON/SSE）、飞书卡片回调、治理看板、APScheduler 每日协调任务、Docker Compose 单机交付；质量走查与待收口项见 [docs/收口清单.md](./docs/收口清单.md)（pytest 套件 `pytest tests`）。
+
+另有 `BetterRAG-demo.html`（单文件十镜演示，离线可跑，`python engine/build_demo.py` 重建）。
+
+## 快速开始（零依赖线）
 
 ```bash
 python -m engine.cli seed --demo        # 首次：管理员导入 8 篇（含 2 铁律）+ 扫描工作区 + 演示预成长
 python -m engine.cli serve --port 8787  # 启动 → http://127.0.0.1:8787/app
-python -m unittest discover -s tests    # 49 项测试（零依赖、确定性）
+python -m unittest discover -s tests/engine    # 49 项测试（零依赖、确定性）
 ```
 
 - **零第三方依赖**：仅 Python ≥3.10 标准库；LLM 可选（未配置走本地兜底，核心机制零 LLM 调用）。
@@ -19,6 +24,7 @@ python -m unittest discover -s tests    # 49 项测试（零依赖、确定性�
   **例外裁决台**（挑刺案卷/影子对决点选/铁律红灯修正案/待处置裁决）·
   **仪表盘**（知识星图：分区着色+冲突连线+铁律方块；⏩快进；事件流；引擎接入配置表单）。
 - 运维细节（备份/快进/LLM 接入/故障排查）见 [docs/runbook.md](./docs/runbook.md)。
+- 容器化线：`docker compose up`（依赖见 `requirements.txt` / `.env.example`）。
 
 ## 目录结构（规格 §16 落地）
 
@@ -28,9 +34,11 @@ engine/  core.py(置信度单变量+生命周期状态机+审计事件) · store
          qa.py(问答+证据结算) · promote.py(举证期挑刺 §4.1) · runtime.py(虚拟时钟/协调/仲裁 §11)
          server.py(HTTP §13) · cli.py · build_demo.py(演示构建器) · check.py
 web/     app.html(生产三页面) · template.html(十镜演示模板) · timeline.json
-tests/   test_lifecycle.py · test_ingest_retrieve.py · test_runtime.py（49 项）
-data/    betterrag.db(SQLite) · workspace/(工作区语料 15 篇)
-docs/    runbook.md(运行手册) · 生命周期引擎规格.md(v4) · adr/ ×5 · 调研/评估/排期 ×8
+tests/engine/  test_lifecycle.py · test_ingest_retrieve.py · test_runtime.py（49 项）
+tests/         （容器化线 pytest 套件：test_api_admin/test_conflict_pipe/… 55 项）
+src/     容器化交付线：engine(storage+FTS5) · api(FastAPI) · web(治理看板) · main.py
+data/    betterrag.db(SQLite，不入库) · workspace/(工作区语料 15 篇)
+docs/    runbook.md(零依赖线运行手册) · 收口清单.md(容器化线质量走查) · 生命周期引擎规格.md(v4) · adr/ ×5
 ```
 
 ---

@@ -17,7 +17,7 @@ python -m engine.cli serve --port 8787
 # 打开 http://127.0.0.1:8787/app
 
 # 3) 运行测试（49 项，全部离线确定性）
-python -m unittest discover -s tests
+python -m unittest discover -s tests/engine
 ```
 
 Windows 一键：双击 `启动服务.cmd`（首次自动种子 + 启动服务）。
@@ -93,6 +93,6 @@ Windows 一键：双击 `启动服务.cmd`（首次自动种子 + 启动服务�
 
 ## 8. 质量门
 
-- `python -m unittest discover -s tests` → 49 项全绿（状态机/棘轮/晋升/铁律/仲裁/持久化/收纳/检索/运行时集成）。
+- `python -m unittest discover -s tests/engine` → 49 项全绿（状态机/棘轮/晋升/铁律/仲裁/持久化/收纳/检索/运行时集成）。
 - 端到端 17 项（种子→问答→反馈→重问→裁决→红灯→修正案→快进→传记→星图）见 `docs/demo演示脚本.md` 同款链路。
 - 回归：`python engine/build_demo.py` 可随时重建单文件演示（`BetterRAG-demo.html`）。
