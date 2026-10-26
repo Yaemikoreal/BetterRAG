@@ -19,3 +19,13 @@ __pycache__/
 # DSH sandbox recovery artifacts
 .dsh-acl-recovery/
 
+<<<<<<< HEAD
+=======
+# BetterRAG runtime state
+data/betterrag.db
+data/betterrag.db-wal
+data/betterrag.db-shm
+data/workspace/复核口径修订.md
+>>>>>>> 4c3446d (生产版 v1.0：生命周期引擎 + SQLite 持久化 + 三页面 Web 应用 + HTTP API)
+# BetterRAG 收纳测试产物
+data/workspace/复核口径修订.md

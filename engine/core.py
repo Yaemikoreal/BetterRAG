@@ -41,6 +41,15 @@ CONFIG: Dict[str, float] = {
     "conflict.threshold_n": 3,
     "conflict.hedge_gap": 0.25,
     "iron.dissent_threshold": 3,
+    "iron.anomaly_threshold": 3,
+    # §7 其余参数（检索 / 收纳 / 信号 / 政策拨盘）
+    "signal.reask_sim_threshold": 0.85,
+    "retrieve.top_k_blocks": 8,
+    "retrieve.exploration_seats": 1,
+    "retrieve.neighbor_window": 1,
+    "ingest.scan_interval": 60.0,
+    "ingest.chunk": 400.0,
+    "promotion.policy": "auto",        # auto | gated（合规域人工门）
 }
 
 # 分区码（前端共用）
@@ -73,8 +82,27 @@ E_AMEND_REJECT = "AMEND_REJECT"
 E_ARB_WIN_NEW = "ARB_WIN_NEW"
 E_ARB_WIN_OLD = "ARB_WIN_OLD"
 E_ARB_NOVOTE = "ARB_NOVOTE"
+E_ARB_HEDGE = "ARB_HEDGE"
+E_TIER0_SET = "TIER0_SET"
+E_TIER0_UNSET = "TIER0_UNSET"
+E_FULL_REVIEW = "FULL_REVIEW"
 
 NEG_SCORE = {"reask": "score.reask", "escalate": "score.escalate", "dislike": "score.dislike"}
+
+
+@dataclass
+class Material:
+    """材料 —— 召回单元（ADR-0002）。进入知识库的文档；知识块是其分区级切片。"""
+
+    id: str
+    title: str
+    source_path: str = ""
+    summary: str = ""                 # 归纳摘要：AI 生成的材料标签（照搬原则：只贴标签）
+    summary_version: int = 0
+    imported_by_admin: bool = False
+    tags: List[str] = field(default_factory=list)
+    content_hash: str = ""            # 收纳幂等：内容指纹
+    created_at: float = 0.0
 
 
 @dataclass
@@ -85,6 +113,10 @@ class Block:
     material_id: str
     title: str
     material_title: str
+    chunk_index: int = 0             # 材料内切片序（相邻块窗口用）
+    content: str = ""                # 原文切片（照搬原则：内容必须取自材料原文）
+    summary: str = ""                # 单块场景下的归纳摘要（兼容单块材料）
+    tags: List[str] = field(default_factory=list)
     angle: float = 0.0          # 星图固定角度（渲染期不抖动）
     jitter: float = 0.0         # 固定径向抖动，避免完全重叠
     conf_stored: float = CONFIG["conf.initial"]
@@ -99,6 +131,7 @@ class Block:
     archived: bool = False
     tier0: bool = False              # 铁律位
     iron_dissent: int = 0
+    iron_alert_at: float = -1e9      # 上次红灯时刻（同一异常窗只亮一次）
     adopted_count: int = 0
     tenure: int = 0                  # 稳定区正证据累计 → 延长闲置容忍
     vet_sources: int = 0
@@ -162,9 +195,12 @@ class Engine:
     def __init__(self) -> None:
         self.now: float = 0.0
         self.blocks: Dict[str, Block] = {}
+        self.materials: Dict[str, Material] = {}
         self.events: List[dict] = []
         self.conflicts: List[dict] = []
         self._reconciled_day: int = -1
+        # 举证期窗满回调（runtime 注入 AI 挑刺；未注入时保持冻结由显式 vet 裁决）
+        self.on_probation_expire = None
 
     # ------------------------------------------------------------ 事件写入
     def _log(self, etype: str, block: Optional[Block], delta: float = 0.0,
@@ -183,17 +219,33 @@ class Engine:
 
     def add_material(self, material_id: str, title: str, material_title: str,
                      admin: bool = False, angle: float = 0.0, jitter: float = 0.0,
-                     sources: int = 0, tier0: bool = False) -> Block:
+                     sources: int = 0, tier0: bool = False, content: str = "",
+                     summary: str = "", tags: Optional[List[str]] = None,
+                     source_path: str = "", created_at: Optional[float] = None) -> Block:
         """§6：INGEST=0.30 入学习区；ADMIN_IMPORT=0.85 直进稳定区（带背书）。
+        单块材料：整篇文档作为一个知识块（demo 兼容路径）。
         tier0=True 表示管理员设为「铁律位」：不自动降级、冲突必胜、只能由人修改（§4.3）。"""
+        if material_id not in self.materials:
+            self.materials[material_id] = Material(
+                id=material_id, title=title, source_path=source_path,
+                summary=summary, summary_version=1 if summary else 0,
+                imported_by_admin=admin, tags=list(tags or []),
+                created_at=self.now if created_at is None else created_at)
+        mat = self.materials[material_id]
+        if summary and not mat.summary:
+            mat.summary = summary
         b = Block(
             id=material_id,
             material_id=material_id,
             title=title,
             material_title=material_title,
+            chunk_index=0,
+            content=content,
+            summary=summary,
+            tags=list(tags or []),
             angle=angle,
             jitter=jitter,
-            created_at=self.now,
+            created_at=self.now if created_at is None else created_at,
             last_engagement_at=self.now,
             decay_baseline_at=self.now,
             vet_sources=sources,
@@ -211,6 +263,33 @@ class Engine:
                   actor="admin" if admin else "agent")
         return b
 
+    def add_chunk(self, material_id: str, chunk_index: int, content: str,
+                  title: str = "", admin: bool = False, tier0: bool = False,
+                  bid: Optional[str] = None) -> Block:
+        """多块材料：原文切片逐块入库（治理单元=知识块，召回单元=材料）。
+        bid 可由调用方指定（内容指纹 id：内容变 → 新块新生命周期，旧块自然衰减）。"""
+        mat = self.materials[material_id]
+        bid = bid or f"{material_id}#{chunk_index}"
+        b = Block(
+            id=bid, material_id=material_id, title=title or mat.title,
+            material_title=mat.title, chunk_index=chunk_index, content=content,
+            tags=list(mat.tags), created_at=self.now, last_engagement_at=self.now,
+            decay_baseline_at=self.now, tier0=bool(tier0))
+        if admin:
+            b.conf_stored = CONFIG["conf.promote_value"]
+            b.zone = ZONE_STABLE
+        self.blocks[bid] = b
+        self._log(E_ADMIN_IMPORT if admin else E_INGEST, b,
+                  note=f"切片 #{chunk_index}（{len(content)} 字）· "
+                       + ("管理员导入" if admin else "原文切片·AI 只贴标签"),
+                  actor="admin" if admin else "agent")
+        return b
+
+    def material_blocks(self, material_id: str) -> List[Block]:
+        """同材料的全部知识块，按切片序（相邻块窗口的基础）。"""
+        return sorted((b for b in self.blocks.values() if b.material_id == material_id),
+                      key=lambda x: x.chunk_index)
+
     def adopt(self, bid: str, note: str = "") -> None:
         """§3.1 活性：重置保鲜时钟，零积分。"""
         b = self.blocks[bid]
@@ -220,11 +299,19 @@ class Engine:
         self._log(E_ADOPT, b, 0.0, note or "答案实际使用该块（活性·零积分）", "user")
 
     def evidence(self, bid: str, kind: str = "pos", note: str = "") -> None:
-        """§3.1 证据桶：正 +0.02 / 负 -0.02~-0.04；常规自动事件上限 0.749。"""
+        """§3.1 证据桶：正 +0.02 / 负 -0.02~-0.04；常规自动事件上限 0.749。
+        铁律记账零豁免（§4.3）：事件照记，但铁律位不改分——它的退出通道是修正案，
+        不允许机器事件把它悄悄改出稳定区。"""
         b = self.blocks[bid]
         if b.archived or b.suspended:
             return
         delta = CONFIG["score.evid_pos"] if kind == "pos" else CONFIG[NEG_SCORE[kind]]
+        if b.tier0:
+            self._log(E_EVID_POS if kind == "pos" else E_EVID_NEG, b, 0.0,
+                      note or ("正证据" if kind == "pos" else f"负证据·{kind}·记账零豁免（铁律不改分）"), "user")
+            if kind != "pos":
+                self._iron_anomaly_check(b)
+            return
         if delta > 0:
             # 机器写入边界：常规自动事件不得跨越稳定区下界
             if b.conf_stored < CONFIG["conf.zone.stable_min"]:
@@ -237,12 +324,27 @@ class Engine:
         self._log(E_EVID_POS if kind == "pos" else E_EVID_NEG, b, delta,
                   note or ("正证据" if kind == "pos" else f"负证据·{kind}"), "user")
 
+    def _iron_anomaly_check(self, b: Block) -> None:
+        """§4.3 红灯（负证据异常）：30 天窗口内 ≥3 笔负证据 → 仪表盘置顶红灯。
+        同一窗口只亮一次（iron_alert_at 记录时刻，窗滚动后可再亮）。"""
+        window = 30.0
+        cnt = sum(1 for e in self.events
+                  if e["t"] == E_EVID_NEG and e["b"] == b.id and e["d"] >= self.now - window)
+        if cnt >= CONFIG["iron.anomaly_threshold"] and self.now - b.iron_alert_at >= window:
+            b.iron_alert_at = self.now
+            self._log(E_IRON_ALERT, b, 0.0,
+                      f"负证据异常：{int(cnt)} 笔/30 天（阈值 "
+                      f"{CONFIG['iron.anomaly_threshold']}）→ 置顶红灯 + 催办", "engine")
+
     # ------------------------------------------------- §4.1 慢升：自证晋升
     def _maybe_enter_probation(self) -> None:
         for b in self.blocks.values():
             if b.archived or b.suspended or b.frozen or b.pending or b.queued:
                 continue
-            if b.conf_stored >= CONFIG["conf.zone.prelim_min"] and b.zone != ZONE_STABLE:
+            # §4.1 证据净攒「跨 0.60」：仅预备区带 [0.60, 0.75) 的块进入举证期。
+            # 稳定区（≥0.75）永不进入——即便物化 zone 字段因故失真也不误冻（纵深防御）。
+            if (CONFIG["conf.zone.prelim_min"] <= b.conf_stored
+                    < CONFIG["conf.zone.stable_min"]) and b.zone != ZONE_STABLE:
                 b.frozen = True
                 b.zone = ZONE_PRELIM
                 b.probation_until = self.now + CONFIG["promotion.probation_days"]
@@ -294,12 +396,27 @@ class Engine:
             b.decay_baseline_at = self.now
             self._log(E_ADJ_REJECT, b, CONFIG["conf.initial"], "人工裁决·拒绝 → 0.30 积分清零回学习区", "admin")
         elif action == "restore":
-            b.conf_stored = CONFIG["conf.promote_value"]
-            b.zone = ZONE_STABLE
-            b.pending = False
-            b.last_engagement_at = self.now
-            b.decay_baseline_at = self.now
-            self._log(E_ADJ_RESTORE, b, CONFIG["conf.promote_value"], "人工裁决·恢复 → 0.85", "admin")
+            if b.archived:
+                # §5 归档 --> 学习区：处置·恢复（0.30）
+                b.archived = False
+                b.conf_stored = CONFIG["conf.initial"]
+                b.zone = ZONE_LEARN
+                b.pending = False
+                b.superseded_by = None
+                b.last_engagement_at = self.now
+                b.decay_baseline_at = self.now
+                self._log(E_ADJ_RESTORE, b, CONFIG["conf.initial"],
+                          "人工处置·恢复 → 0.30 回学习区（翻案）", "admin")
+            else:
+                # §5 待处置 --> 稳定区：裁决·恢复（0.85）
+                b.conf_stored = CONFIG["conf.promote_value"]
+                b.zone = ZONE_STABLE
+                b.pending = False
+                b.pending_reason = ""
+                b.last_engagement_at = self.now
+                b.decay_baseline_at = self.now
+                self._log(E_ADJ_RESTORE, b, CONFIG["conf.promote_value"],
+                          "人工裁决·恢复 → 0.85 回稳定区", "admin")
         elif action == "demote":
             b.conf_stored = CONFIG["conf.demote_value"]
             b.pending = True
@@ -312,17 +429,62 @@ class Engine:
             b.zone = ZONE_ARCHIVED
             self._log(E_ADJ_ARCHIVE, b, 0.0, "人工裁决·废弃 → 归档（不删除，可翻案）", "admin")
 
+    def probation_expire(self, b: Block) -> None:
+        """§4.1 观察窗满而佐证不足 → 解冻回学习区（积分保留，衰减恢复）。"""
+        b.frozen = False
+        b.probation_until = -1.0
+        if b.conf_stored >= CONFIG["conf.zone.prelim_min"]:
+            # 回学习区需落到预备区下界之下；积分保留=只做棘轮微降（非清零）
+            b.conf_stored = CONFIG["conf.zone.prelim_min"] - 0.001
+        b.zone = ZONE_LEARN
+        self._log(E_PROBATION_EXPIRE, b, 0.0,
+                  f"举证期满佐证不足（独立佐证 {b.vet_sources}/"
+                  f"{CONFIG['promotion.vet_sources_min']} 源）→ 解冻回学习区（积分保留）", "engine")
+
+    def set_tier0(self, bid: str, on: bool) -> None:
+        """§6 TIER0_SET / TIER0_UNSET：铁律位只能由管理员设置。"""
+        b = self.blocks[bid]
+        b.tier0 = bool(on)
+        if not on:
+            b.iron_dissent = 0
+        self._log(E_TIER0_SET if on else E_TIER0_UNSET, b, 0.0,
+                  "铁律位设置（管理员）" if on else "铁律位解除（管理员）", "admin")
+
+    def full_review(self, material_id: str) -> int:
+        """§6 整篇重审：材料级治理 —— 该材料全部知识块打回 0.70 待处置。"""
+        n = 0
+        for b in self.material_blocks(material_id):
+            if b.archived or b.suspended or b.tier0:
+                continue
+            b.conf_stored = CONFIG["conf.demote_value"]
+            b.pending = True
+            b.frozen = False
+            b.queued = False
+            b.probation_until = -1.0
+            b.zone = ZONE_PENDING
+            b.pending_reason = "整篇重审（管理员触发材料级重审）"
+            b.last_engagement_at = self.now
+            b.decay_baseline_at = self.now
+            self._log(E_FULL_REVIEW, b, CONFIG["conf.demote_value"],
+                      f"整篇重审：{self.materials[material_id].title if material_id in self.materials else material_id}"
+                      f" → 全部知识块打回 {CONFIG['conf.demote_value']:.2f} 待处置", "admin")
+            n += 1
+        return n
+
     # ------------------------------------------------- §4.2 快降：衰减协调
     def reconcile(self, day: Optional[int] = None) -> None:
         """协调任务：幂等物化。棘轮下调 + 重锚衰减基线 + 跨界迁移。"""
         now = self.now if day is None else float(day)
+        self.now = now     # 保持 self.now 与协调时刻一致（举证期等内部钩子依赖）
         for b in self.blocks.values():
             if b.archived or b.suspended:
                 continue
             if b.frozen:
                 if b.probation_until >= 0 and now >= b.probation_until:
-                    # 观察窗满：演示主线由 vet() 显式裁决，此处兜底解冻
-                    pass
+                    # 观察窗满：runtime 注入 on_probation_expire（AI 挑刺 → 转/挂/解冻三路）；
+                    # 未注入（demo 主线）则保持冻结，由显式 vet() 裁决。
+                    if self.on_probation_expire is not None:
+                        self.on_probation_expire(b)
                 continue
             eff = b.effective(now)
             # 跌破稳定区下界 → 待处置（棘轮落 0.749）
@@ -420,6 +582,17 @@ class Engine:
         else:
             rec["count"] = max(0, rec["count"] - 1)
             self._log(E_ARB_NOVOTE, d, 0.0, "无人点选 → 计数 −1（仲裁不强制，冲突会渐忘）", "user")
+
+    def hedge_resolve(self, rec: dict) -> None:
+        """§8 仲裁阶梯第二级：差 ≥0.25 对冲判负 —— 挑战者按 dislike 记一笔负证据。"""
+        d, c = self.blocks[rec["defender"]], self.blocks[rec["challenger"]]
+        gap = d.effective(self.now) - c.effective(self.now)
+        c.conf_stored = max(0.0, c.conf_stored + CONFIG["score.dislike"])
+        rec["status"] = "closed"
+        rec["verdict"] = "hedge"
+        self._log(E_ARB_HEDGE, c, CONFIG["score.dislike"],
+                  f"对冲判负：差 {gap:.2f} ≥ {CONFIG['conflict.hedge_gap']:.2f}"
+                  f"（低置信挑战者记负证据 {CONFIG['score.dislike']:.2f}）", "engine")
 
     def amend_replace(self, old_id: str, new_id: str) -> None:
         """§4.3 一键接替：原子交接 —— 新块 0.85+铁律位，旧铁律归档+取代链。"""
